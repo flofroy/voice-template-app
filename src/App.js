@@ -11,12 +11,18 @@ export default function VoiceTemplateApp() {
   const [templateText, setTemplateText] = useState(templates[selectedTemplate]);
   const [isListening, setIsListening] = useState(false);
   const [savedEntries, setSavedEntries] = useState(() => JSON.parse(localStorage.getItem('voice_templates') || '{}'));
+  const [currentKeyIndex, setCurrentKeyIndex] = useState(0);
   const recognitionRef = useRef(null);
+
+  const keys = Object.keys(templates[selectedTemplate].match(/\{\{(.*?)\}\}/g).reduce((acc, val) => {
+    acc[val.replace(/[{}]/g, '')] = true;
+    return acc;
+  }, {}));
 
   useEffect(() => {
     if (!('webkitSpeechRecognition' in window)) return;
     const recognition = new webkitSpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = 'en-US';
 
@@ -26,8 +32,12 @@ export default function VoiceTemplateApp() {
     };
 
     recognition.onerror = (e) => console.error(e);
+    recognition.onend = () => {
+      if (isListening) recognition.start();
+    };
+
     recognitionRef.current = recognition;
-  }, []);
+  }, [isListening]);
 
   useEffect(() => {
     const newTemplate = templates[selectedTemplate];
@@ -39,15 +49,58 @@ export default function VoiceTemplateApp() {
   }
 
   function handleSpeechInput(text) {
-    const keys = Object.keys(templates[selectedTemplate].match(/\{\{(.*?)\}\}/g).reduce((acc, val) => {
-      acc[val.replace(/[{}]/g, '')] = true;
-      return acc;
-    }, {}));
+    const command = text.trim().toLowerCase();
 
-    const nextKey = keys.find(k => !filledValues[k]);
-    if (nextKey) {
-      setFilledValues(prev => ({ ...prev, [nextKey]: text }));
+    if (command === 'next' || command === 'skip') {
+      setCurrentKeyIndex((prev) => Math.min(prev + 1, keys.length - 1));
+      return;
     }
+
+    if (command === 'back') {
+      setCurrentKeyIndex((prev) => Math.max(prev - 1, 0));
+      return;
+    }
+
+    if (command === 'clear this field') {
+      const currentKey = keys[currentKeyIndex];
+      if (currentKey) {
+        setFilledValues(prev => ({ ...prev, [currentKey]: '' }));
+      }
+      return;
+    }
+
+    if (command === 'delete last point') {
+      const currentKey = keys[currentKeyIndex];
+      if (currentKey && filledValues[currentKey]) {
+        const lines = filledValues[currentKey].split('\n');
+        lines.pop();
+        setFilledValues(prev => ({ ...prev, [currentKey]: lines.join('\n') }));
+      }
+      return;
+    }
+
+    if (command.startsWith('go to')) {
+      const targetKey = command.replace('go to', '').trim();
+      const index = keys.findIndex(k => k.toLowerCase() === targetKey);
+      if (index !== -1) {
+        setCurrentKeyIndex(index);
+      }
+      return;
+    }
+
+    const currentKey = keys[currentKeyIndex];
+    if (!currentKey) return;
+
+    const segments = text.split(/next point/i).map(s => s.trim()).filter(Boolean);
+    const newEntry = segments.map(s => `- ${s}`).join('\n');
+
+    setFilledValues(prev => {
+      const existing = prev[currentKey] || '';
+      const updated = existing ? `${existing}\n${newEntry}` : newEntry;
+      return { ...prev, [currentKey]: updated };
+    });
+
+    setCurrentKeyIndex((prev) => Math.min(prev + 1, keys.length - 1));
   }
 
   function toggleListening() {
@@ -72,6 +125,7 @@ export default function VoiceTemplateApp() {
     if (!data) return;
     setSelectedTemplate(data.template);
     setFilledValues(data.filledValues);
+    setCurrentKeyIndex(0);
   }
 
   function deleteSaved(name) {
@@ -111,10 +165,13 @@ export default function VoiceTemplateApp() {
         <select value={selectedTemplate} onChange={e => {
           setSelectedTemplate(e.target.value);
           setFilledValues({});
+          setCurrentKeyIndex(0);
         }}>
           {Object.keys(templates).map(t => <option key={t}>{t}</option>)}
         </select>
       </div>
+
+      <p><strong>Current Field:</strong> {keys[currentKeyIndex]}</p>
 
       <button onClick={toggleListening} style={{ margin: '10px 0' }}>
         {isListening ? '🎤 Listening...' : '🎤 Click to Speak'}
