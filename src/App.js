@@ -1,9 +1,5 @@
 // Main React component for the voice-driven template autofill website
 import React, { useState, useRef, useEffect } from 'react';
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 
 const templates = {
   "Inspection Summary": `*** INSPECTION SUMMARY ***\n* Vehicle inspected: {{vehicle}}\n* Damages overview: {{damages}}\n* Theft recoveries: {{theft}}\n* Unrelated damages: {{unrelated}}\n* Any open items or supp?: {{supp}}\n* Parts Search/Source: {{parts}}\n* Appraisal comments: {{comments}}`
@@ -87,11 +83,13 @@ export default function VoiceTemplateApp() {
 
   function finalizeText() {
     const text = applyFilledValues(templates[selectedTemplate]);
+    const apiKey = process.env.OPENAI_KEY || 'YOUR_OPENAI_API_KEY';
+
     fetch('https://api.openai.com/v1/engines/gpt-4/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer YOUR_OPENAI_API_KEY'
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify({
         prompt: `Fix grammar, make concise and professional:\n\n${text}`,
@@ -106,39 +104,40 @@ export default function VoiceTemplateApp() {
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <Card>
-        <CardContent className="space-y-2">
-          <label>Select Template:</label>
-          <select value={selectedTemplate} onChange={e => {
-            setSelectedTemplate(e.target.value);
-            setFilledValues({});
-          }}>
-            {Object.keys(templates).map(t => <option key={t}>{t}</option>)}
-          </select>
+    <div style={{ padding: '20px', fontFamily: 'sans-serif' }}>
+      <h2>Voice Template Autofill</h2>
+      <div>
+        <label>Select Template:</label>
+        <select value={selectedTemplate} onChange={e => {
+          setSelectedTemplate(e.target.value);
+          setFilledValues({});
+        }}>
+          {Object.keys(templates).map(t => <option key={t}>{t}</option>)}
+        </select>
+      </div>
 
-          <Button onClick={toggleListening}>{isListening ? 'Listening...' : 'Click to Speak'}</Button>
+      <button onClick={toggleListening} style={{ margin: '10px 0' }}>
+        {isListening ? '🎤 Listening...' : '🎤 Click to Speak'}
+      </button>
 
-          <Textarea readOnly value={templateText} rows={10} />
+      <textarea readOnly value={templateText} rows={10} style={{ width: '100%', marginBottom: '10px' }} />
 
-          <div className="flex items-center space-x-2">
-            <Input placeholder="Name this entry" id="saveName" />
-            <Button onClick={() => handleSave(document.getElementById('saveName').value)}>Save</Button>
-            <Button onClick={finalizeText}>Finalize & Clean</Button>
-          </div>
+      <div>
+        <input placeholder="Name this entry" id="saveName" />
+        <button onClick={() => handleSave(document.getElementById('saveName').value)}>💾 Save</button>
+        <button onClick={finalizeText}>✨ Finalize & Clean</button>
+      </div>
 
-          <div>
-            <label>Load Saved Entry:</label>
-            <select onChange={(e) => loadSaved(e.target.value)}>
-              <option>-- Select --</option>
-              {Object.keys(savedEntries).map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-            <Button onClick={() => deleteSaved(document.querySelector('select').value)}>Delete</Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div style={{ marginTop: '20px' }}>
+        <label>Load Saved Entry:</label>
+        <select onChange={(e) => loadSaved(e.target.value)}>
+          <option>-- Select --</option>
+          {Object.keys(savedEntries).map(name => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+        <button onClick={() => deleteSaved(document.querySelector('select').value)}>🗑 Delete</button>
+      </div>
     </div>
   );
 }
